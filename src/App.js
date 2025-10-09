@@ -1,15 +1,48 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Code2, Play, Terminal, FileText, Folder, Plus, FolderPlus, X, ChevronRight, ChevronDown, Sun, Moon, Zap, ChevronLeft, Send, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+
+import { Code2, Play, Terminal, FileText, Folder, Plus, FolderPlus, X, ChevronRight, ChevronDown, Sun, Moon, Zap, ChevronLeft, Send, MessageSquare, Cpu } from 'lucide-react';
+
+import mermaid from 'mermaid';
+
 
 // Mock data for languages
 const languages = [
-    { id: 'python', name: 'Python', extension: '.py', defaultCode: 'print("Hello World!")' },
-    { id: 'javascript', name: 'JavaScript', extension: '.js', defaultCode: 'console.log("Hello World!");' },
+    { id: 'python', name: 'Python', extension: '.py', defaultCode: 'def fib(n):\n\tif n <= 1:\n\t\treturn n\n\treturn fib(n-1) + fib(n-2)\n\nresult = fib(5)\nprint(f"Fib(5): {result}")' },
+    { id: 'javascript', name: 'JavaScript', extension: '.js', defaultCode:'function greet(name) {\n\tconst message = `Hello, ${name}!`\n\tconsole.log(message);\n\treturn message.length;\n}\n\ngreet("World");' },
     { id: 'java', name: 'Java', extension: '.java', defaultCode: 'public class Main {\n\tpublic static void main(String[] args) {\n\t\tSystem.out.println("Hello World!");\n\t}\n}' },
     { id: 'cpp', name: 'C++', extension: '.cpp', defaultCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n\tcout << "Hello World!" << endl;\n\treturn 0;\n}' }
 ];
 
-// --- Utility function to call the AI API (Kept as is, relies on clean code being passed) ---
+
+
+// --- Mock Code Flow Data ---
+const getFlowSteps = (language) => {
+    switch (language) {
+        case 'java':
+        case 'cpp':
+            return [
+                { id: 1, name: 'Source Code', icon: <FileText className="w-5 h-5" />, details: 'Code is prepared for compilation.' },
+                { id: 2, name: 'Compilation', icon: <Cpu className="w-5 h-5" />, details: 'Source code is translated into machine/bytecode.' },
+                { id: 3, name: 'Linking/Loading', icon: <Folder className="w-5 h-5" />, details: 'External libraries are connected, program loads into memory.' },
+                { id: 4, name: 'Execution (VM/OS)', icon: <Play className="w-5 h-5" />, details: 'The virtual machine or operating system runs the executable.' },
+                { id: 5, name: 'Output/Termination', icon: <Terminal className="w-5 h-5" />, details: 'Program finishes and results are sent to console.' }
+            ];
+        case 'python':
+        case 'javascript':
+        default:
+            return [
+                { id: 1, name: 'Source Code', icon: <FileText className="w-5 h-5" />, details: 'Code is prepared for execution.' },
+                { id: 2, name: 'Interpretation/JIT', icon: <Cpu className="w-5 h-5" />, details: 'Code is read line-by-line or Just-In-Time compiled.' },
+                { id: 3, name: 'Memory Allocation', icon: <Folder className="w-5 h-5" />, details: 'Variables and functions are assigned space (Stack/Heap).' },
+                { id: 4, name: 'Execution', icon: <Play className="w-5 h-5" />, details: 'The runtime executes the instructions.' },
+                { id: 5, name: 'Output/Termination', icon: <Terminal className="w-5 h-5" />, details: 'Script finishes and results are sent to console.' }
+            ];
+    }
+};
+
+
+
+// --- Utility function to call the AI API (Kept as is) ---
 const callAIAPI = async (messages) => {
     const apiKey = "AIzaSyCYDkTZgh13GV7d1-QR8Bq3YbjNNvcllmY"; 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
@@ -66,6 +99,65 @@ const callAIAPI = async (messages) => {
     return "### AI Assistant Failed\nCould not connect to the service or the request timed out. Please try again.";
 };
 
+// --- New Utility function for AI Visualization ---
+const callAIVisualize = async (messages) => {
+    const apiKey = "AIzaSyCYDkTZgh13GV7d1-QR8Bq3YbjNNvcllmY"; 
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+
+    const contents = messages.map(msg => ({
+        role: msg.sender === 'user' ? 'user' : 'model',
+        parts: [{ text: msg.text }]
+    }));
+
+    const systemInstruction = {
+        parts: [{ text: "You are a code visualization assistant focused on a. Analyze the code and if it involves arrays, output only the Mermaid diagram code to visualize the logic. Do not include any other text or explanations. If not array-related, output exactly 'Not an array problem'." }]
+    };
+
+    const payload = {
+        contents: contents,
+        systemInstruction: systemInstruction,
+    };
+
+    const maxRetries = 3;
+    let attempt = 0;
+
+    while (attempt < maxRetries) {
+        try {
+            const response = await fetch(apiUrl, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload)
+            });
+
+            if (!response.ok) {
+                throw new Error(`HTTP error! Status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+
+            if (text) {
+                return text;
+            } else {
+                throw new Error("Empty response from AI model.");
+            }
+        } catch (err) {
+            attempt++;
+            if (attempt < maxRetries) {
+                const delay = Math.pow(2, attempt) * 1000; 
+                console.error(`AI Visualize attempt ${attempt} failed. Retrying in ${delay / 1000}s.`, err);
+                await new Promise(resolve => setTimeout(resolve, delay));
+            } else {
+                console.error("AI Visualization failed after max retries:", err);
+                return "Not an array problem";
+            }
+        }
+    }
+    return "Not an array problem";
+};
+
+
+
 
 // Theme Toggle Component (kept as is)
 const ThemeToggle = ({ theme, toggleTheme }) => (
@@ -109,14 +201,13 @@ const CodeEditor = ({ value, onChange }) => (
 );
 
 // Code Runner Component (Execution Only)
-// **UPDATED to use prepareCodeForBackend prop**
-const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prepareCodeForBackend }) => {
+const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prepareCodeForBackend, onExecutionStart, onExecutionComplete }) => {
     const runCode = async () => {
         onRunningChange(true);
         onResult('', false); // Clear previous output
+        onExecutionStart(); // START flow visualization
 
         try {
-            // **CODE CLEANUP APPLIED HERE**
             const codeToSend = prepareCodeForBackend(code); 
             const requestData = {
                 language: language,
@@ -124,6 +215,8 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
             };
             
             const apiUrl = `/run`; 
+            // Simulate processing time through the flow steps
+            await new Promise(resolve => setTimeout(resolve, 500)); 
 
             const response = await fetch(apiUrl, {
                 method: 'POST',
@@ -149,6 +242,7 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
                 true
             );
         } finally {
+            onExecutionComplete(); // STOP flow visualization
             onRunningChange(false);
         }
     };
@@ -174,8 +268,7 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
     );
 };
 
-// --- AIDebugger Component Update for Chat Initiation ---
-// **UPDATED to use prepareCodeForBackend prop**
+// AIDebugger Component (Kept as is)
 const AIDebugger = ({ code, language, setIsAILoading, addMessage, isAISidebarOpen, setIsAISidebarOpen, isAILoading, prepareCodeForBackend }) => {
     
     const debugCodeWithAI = async () => {
@@ -187,7 +280,6 @@ const AIDebugger = ({ code, language, setIsAILoading, addMessage, isAISidebarOpe
 
         setIsAILoading(true);
         
-        // **CODE CLEANUP APPLIED HERE**
         const cleanCode = prepareCodeForBackend(code);
         
         const initialUserQuery = `Review the following ${language} code and provide debugging tips and improvements. Code: \n\`\`\`${language}\n${cleanCode}\n\`\`\``;
@@ -228,6 +320,8 @@ const AIDebugger = ({ code, language, setIsAILoading, addMessage, isAISidebarOpe
         </button>
     );
 };
+
+
 
 
 // File Manager Component (kept as is)
@@ -495,6 +589,8 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
 };
 
 
+
+
 // Terminal Panel Content (kept as is)
 const TerminalPanel = ({ result, isRunning, hasError }) => (
     <div className="output-panel h-full flex flex-col shadow-2xl border-t border-border-color">
@@ -530,7 +626,7 @@ const TerminalPanel = ({ result, isRunning, hasError }) => (
 // AI Panel Content (kept as is)
 const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, sendFollowUp, currentCode, currentLanguage }) => {
     const [userInput, setUserInput] = useState('');
-    const chatEndRef = React.useRef(null);
+    const chatEndRef = useRef(null);
     const hasConversation = messages.length > 0;
 
     const scrollToBottom = () => {
@@ -607,12 +703,12 @@ const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, s
                     )}
                     
                     {isAILoading && (
-                         <div className="flex justify-start mb-4">
-                            <div className='ai-message bg-bg-tertiary text-text-primary p-3 rounded-xl shadow-lg flex items-center gap-3'>
-                                <div className="w-4 h-4 border-2 rounded-full animate-spin ai-spinner-color"></div>
-                                <span className='text-sm'>AI is thinking...</span>
+                           <div className="flex justify-start mb-4">
+                                <div className='ai-message bg-bg-tertiary text-text-primary p-3 rounded-xl shadow-lg flex items-center gap-3'>
+                                    <div className="w-4 h-4 border-2 rounded-full animate-spin ai-spinner-color"></div>
+                                    <span className='text-sm'>AI is thinking...</span>
+                                </div>
                             </div>
-                        </div>
                     )}
                     <div ref={chatEndRef} />
                 </div>
@@ -674,6 +770,117 @@ const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, s
     );
 };
 
+// --- NEW CODE VISUALIZATION COMPONENT ---
+const CodeFlowVisualizer = ({ code, isRunning }) => {
+    const [activeStep, setActiveStep] = useState(0);
+    const steps = getFlowSteps(code);
+
+    useEffect(() => {
+        let interval;
+        if (isRunning) {
+            // Start simulation from step 1
+            setActiveStep(1); 
+            
+            // Cycle through steps 1-4 for visualization
+            interval = setInterval(() => {
+                setActiveStep(prevStep => {
+                    // Stop at step 4 if it's the last stage before output
+                    return prevStep >= 4 ? 4 : prevStep + 1;
+                });
+            }, 1000); // Highlight a new step every 1 second
+        } else {
+            // Reset state when execution stops
+            setActiveStep(0);
+        }
+
+        return () => clearInterval(interval);
+    }, [isRunning]); // Re-run effect when execution state changes
+
+    return (
+        <div className="card-container p-4">
+            <h3 className="text-sm font-bold text-accent mb-4 flex items-center gap-2 font-mono border-b border-border-color pb-2">
+                <Cpu className="w-4 h-4" />
+                Code Execution Flow
+            </h3>
+            <div className="space-y-3">
+                {steps.map((step, index) => {
+                    const stepNumber = index + 1;
+                    const isActive = activeStep === stepNumber;
+                    const isCompleted = isRunning && stepNumber < activeStep;
+                    const colorClass = isActive ? 'flow-active' : isCompleted ? 'flow-completed' : 'flow-pending';
+                    
+                    return (
+                        <div key={step.id} className="flex items-start gap-3">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${colorClass}`}>
+                                {step.icon}
+                            </div>
+                            <div className='flex-1 min-w-0'>
+                                <p className={`text-sm font-medium transition-colors duration-500 ${isActive ? 'text-accent' : isCompleted ? 'text-text-primary' : 'text-text-secondary'}`}>
+                                    {step.name}
+                                </p>
+                                <p className={`text-xs mt-0.5 transition-colors duration-500 ${isActive ? 'text-text-primary font-mono' : 'text-text-secondary font-mono'}`}>
+                                    {isActive ? step.details : ''}
+                                </p>
+                            </div>
+                        </div>
+                    );
+                })}
+            </div>
+            {/* Custom CSS for visualizer transitions */}
+            <style jsx>{`
+                .flow-active {
+                    background-color: var(--color-accent);
+                    color: white;
+                    animation: pulse 1.5s infinite;
+                }
+                .flow-completed {
+                    background-color: var(--color-success);
+                    color: white;
+                }
+                .flow-pending {
+                    background-color: var(--color-bg-tertiary);
+                    color: var(--color-text-secondary);
+                }
+            `}</style>
+        </div>
+    );
+};
+
+// --- NEW VISUALIZATION PANEL COMPONENT ---
+const Visualization = ({ visualization, isVisualizing }) => {
+    const mermaidRef = useRef(null);
+
+    useEffect(() => {
+        if (visualization && mermaidRef.current) {
+            mermaid.run({
+                nodes: [mermaidRef.current],
+            }).catch(err => console.error('Mermaid error:', err));
+        }
+    }, [visualization]);
+
+    return (
+        <div className="card-container p-4">
+            <h3 className="text-sm font-bold text-accent mb-4 flex items-center gap-2 font-mono border-b border-border-color pb-2">
+                <Cpu className="w-4 h-4" />
+                Code Visualization
+            </h3>
+            {isVisualizing ? (
+                <div className="flex items-center gap-2 text-warning">
+                    <div className="w-4 h-4 border-2 rounded-full animate-spin spinner"></div>
+                    Generating visualization...
+                </div>
+            ) : visualization ? (
+                <div ref={mermaidRef} className="mermaid">
+                    {visualization}
+                </div>
+            ) : (
+                <p className="text-text-secondary text-sm">No array visualization available.</p>
+            )}
+        </div>
+    );
+};
+
+
 
 function App() {
     const [selectedLanguage, setSelectedLanguage] = useState('java');
@@ -689,18 +896,37 @@ function App() {
     const [isAILoading, setIsAILoading] = useState(false);
     const [isAISidebarOpen, setIsAISidebarOpen] = useState(false);
 
-    // **NEW HELPER FUNCTION TO FIX BACKSLASH ISSUE**
+    // Flow Visualizer State
+    const [isFlowRunning, setIsFlowRunning] = useState(false);
+
+    // NEW: Visualization States
+    const [visualization, setVisualization] = useState('');
+    const [isVisualizing, setIsVisualizing] = useState(false);
+    const debounceTimer = useRef(null);
+
+    // NEW HELPER FUNCTION TO FIX BACKSLASH ISSUE
     const prepareCodeForBackend = (code) => {
         if (!code) return '';
         // Aggressively remove all backslashes. 
-        // This stops the problematic sequence (like \") from being sent to a 
-        // non-compliant backend JSON parser, effectively "fixing" the quoted string issue.
         return code.replace(/\\/g, ''); 
     };
 
     const addMessage = useCallback((message) => {
         setMessages(prev => [...prev, message]);
     }, []);
+
+    // Function to handle flow visualization start
+    const handleExecutionStart = () => {
+        setIsFlowRunning(true);
+    };
+
+    // Function to handle flow visualization stop
+    const handleExecutionComplete = () => {
+        // A slight delay ensures the final step (Output/Termination) has a moment of visibility
+        setTimeout(() => {
+            setIsFlowRunning(false);
+        }, 500);
+    };
 
     // Function to handle follow-up queries
     const sendFollowUp = async (userText, currentCode, currentLanguage) => {
@@ -709,7 +935,7 @@ function App() {
         // 1. Add user message to history (to display immediately)
         addMessage({ sender: 'user', text: userText, isCodePrompt: false });
 
-        // **Clean the code before preparing the API message context**
+        // Clean the code before preparing the API message context
         const cleanCode = prepareCodeForBackend(currentCode);
         const initialQuery = `Review the following ${currentLanguage} code and provide debugging tips and improvements. Code: \n\`\`\`${currentLanguage}\n${cleanCode}\n\`\`\``;
 
@@ -738,6 +964,10 @@ function App() {
     useEffect(() => {
         const language = languages.find(lang => lang.id === selectedLanguage);
         if (language) {
+            // Find an existing file with the new extension or the default file
+            const newExtension = language.extension;
+            // Note: In a real multi-file editor, this logic would be more complex
+            // For simplicity, we only auto-fill if the current file is the default one and empty.
             if (currentFile === 'main.js' && code.trim() === '') {
                 setCode(language.defaultCode);
             }
@@ -762,6 +992,42 @@ function App() {
         setMessages([]);
         setIsAILoading(false);
     };
+
+    // NEW: Function to visualize code
+    const visualizeCode = async () => {
+        if (!code.trim()) return;
+        setIsVisualizing(true);
+        const cleanCode = prepareCodeForBackend(code);
+        const query = `Analyze the following ${selectedLanguage} code. If it involves array operations or is an array problem, generate a Mermaid diagram (e.g., flowchart) that visualizes the logic to make it easy to understand. Output only the Mermaid code without any additional text. If not an array problem, output "Not an array problem".
+Code:
+\`\`\`${selectedLanguage}
+${cleanCode}
+\`\`\``;
+        const aiResponse = await callAIVisualize([{ sender: 'user', text: query }]);
+        if (aiResponse.includes('Not an array problem')) {
+            setVisualization('');
+        } else {
+            setVisualization(aiResponse);
+        }
+        setIsVisualizing(false);
+    };
+
+    // NEW: Debounce visualization on code change
+    useEffect(() => {
+        if (debounceTimer.current) clearTimeout(debounceTimer.current);
+        debounceTimer.current = setTimeout(() => {
+            visualizeCode();
+        }, 2000); // Visualize 2 seconds after typing stops
+        return () => clearTimeout(debounceTimer.current);
+    }, [code, selectedLanguage]);
+
+    // Initialize Mermaid
+    useEffect(() => {
+        mermaid.initialize({
+            startOnLoad: false,
+            theme: theme === 'dark' ? 'dark' : 'default',
+        });
+    }, [theme]);
 
     const currentLanguage = languages.find(lang => lang.id === selectedLanguage);
     const terminalHeightClass = isAISidebarOpen ? 'h-40-calc' : 'h-48-calc'; 
@@ -1053,6 +1319,7 @@ function App() {
                 .ai-sidebar-closed {
                     width: 0;
                     overflow: hidden;
+                    min-width: 0;
                 }
 
                 /* --- HEIGHT UTILITY FIXES --- */
@@ -1120,7 +1387,11 @@ function App() {
                 .ml-4 { margin-left: 1rem; }
                 .mr-10 { margin-right: 2.5rem; }
                 .ml-10 { margin-left: 2.5rem; }
+                .mb-2 { margin-bottom: 0.5rem; }
+                .mb-3 { margin-bottom: 0.75rem; }
                 .mb-4 { margin-bottom: 1rem; }
+                .mt-2 { margin-top: 0.5rem; }
+                .mt-4 { margin-top: 1rem; }
                 .p-4 { padding: 1rem; }
                 .p-6 { padding: 1.5rem; }
                 .px-2 { padding-left: 0.5rem; padding-right: 0.5rem; }
@@ -1133,9 +1404,6 @@ function App() {
                 .py-4 { padding-top: 1rem; padding-bottom: 1rem; }
                 .pt-3 { padding-top: 0.75rem; }
                 .pb-2 { padding-bottom: 0.5rem; }
-                .mb-2 { margin-bottom: 0.5rem; }
-                .mb-3 { margin-bottom: 0.75rem; }
-                .mt-2 { margin-top: 0.5rem; }
                 .w-full { width: 100%; }
                 .h-screen { height: 100vh; }
                 .h-full { height: 100%; }
@@ -1148,6 +1416,7 @@ function App() {
                 .rounded-xl { border-radius: 0.75rem; }
                 .space-y-1 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.25rem; }
                 .space-y-2 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.5rem; }
+                .space-y-3 > :not([hidden]) ~ :not([hidden]) { margin-top: 0.75rem; }
                 .border { border-width: 1px; }
                 .border-none { border-style: none; }
                 .border-t { border-top-width: 1px; }
@@ -1172,11 +1441,11 @@ function App() {
                 .transition-all { transition-property: all; transition-duration: 300ms; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
                 .transition-colors { transition-property: background-color, border-color, color, fill, stroke; transition-duration: 300ms; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); }
                 .transform { transform: translate(0, 0) rotate(0) skew(0) scaleX(1) scaleY(1); }
-                .hover\:scale-105:hover { transform: scale(1.05); }
-                .disabled\:scale-100:disabled { transform: scale(1); }
-                .focus\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
+                .hover\\:scale-105:hover { transform: scale(1.05); }
+                .disabled\\:scale-100:disabled { transform: scale(1); }
+                .focus\\:outline-none:focus { outline: 2px solid transparent; outline-offset: 2px; }
                 .opacity-0 { opacity: 0; }
-                .group:hover .group-hover\:opacity-100 { opacity: 1; }
+                .group:hover .group-hover\\:opacity-100 { opacity: 1; }
                 .cursor-pointer { cursor: pointer; }
                 .text-accent { color: var(--color-accent); }
                 .text-text-primary { color: var(--color-text-primary); }
@@ -1309,6 +1578,8 @@ function App() {
                                 onRunningChange={setIsRunning}
                                 isRunning={isRunning}
                                 prepareCodeForBackend={prepareCodeForBackend}
+                                onExecutionStart={handleExecutionStart}
+                                onExecutionComplete={handleExecutionComplete} 
                             />
                         </div>
                         <div className="flex-1">
@@ -1327,6 +1598,13 @@ function App() {
                             />
                         </div>
                     </div>
+
+                    {/* --- NEW: Code Execution Flow Visualizer --- */}
+                    <CodeFlowVisualizer language={selectedLanguage} isRunning={isFlowRunning} />
+                    {/* --- END NEW COMPONENT --- */}
+
+                    {/* --- NEW: Visualization Panel --- */}
+                    <Visualization visualization={visualization} isVisualizing={isVisualizing} />
 
                     {/* Language Details */}
                     <div className="card-container p-4">
@@ -1399,5 +1677,8 @@ function App() {
         </div>
     );
 }
+
+
+
 
 export default App;
