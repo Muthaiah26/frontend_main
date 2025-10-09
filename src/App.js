@@ -1,21 +1,27 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-import { Code2, Play, Terminal, FileText, Folder, Plus, FolderPlus, X, ChevronRight, ChevronDown, Sun, Moon, Zap, ChevronLeft, Send, MessageSquare, Cpu } from 'lucide-react';
+import { Code2, Play, Terminal, FileText, Folder, Plus, FolderPlus, X, ChevronRight, ChevronDown, Sun, Moon, Zap, ChevronLeft, Send, MessageSquare, Cpu, Box } from 'lucide-react';
 
-import mermaid from 'mermaid';
+// Add these imports at the top, along with React and Lucide icons
+import { motion } from 'framer-motion';
+import ReactFlow, { MiniMap, Controls, Background, useNodesState, useEdgesState } from 'reactflow';
+import 'reactflow/dist/style.css'; 
+import Prism from "prismjs";
+import "prismjs/themes/prism-tomorrow.css"; // Dark theme
 
+// ----------------------------------------------------------------------
+// --- MOCK DATA & UTILS (Updated for Step-by-Step Visualizer) ---
+// ----------------------------------------------------------------------
 
 // Mock data for languages
 const languages = [
     { id: 'python', name: 'Python', extension: '.py', defaultCode: 'def fib(n):\n\tif n <= 1:\n\t\treturn n\n\treturn fib(n-1) + fib(n-2)\n\nresult = fib(5)\nprint(f"Fib(5): {result}")' },
     { id: 'javascript', name: 'JavaScript', extension: '.js', defaultCode:'function greet(name) {\n\tconst message = `Hello, ${name}!`\n\tconsole.log(message);\n\treturn message.length;\n}\n\ngreet("World");' },
-    { id: 'java', name: 'Java', extension: '.java', defaultCode: 'public class Main {\n\tpublic static void main(String[] args) {\n\t\tSystem.out.println("Hello World!");\n\t}\n}' },
-    { id: 'cpp', name: 'C++', extension: '.cpp', defaultCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n\tcout << "Hello World!" << endl;\n\treturn 0;\n}' }
+    { id: 'java', name: 'Java', extension: '.java', defaultCode: 'public class Main {\n\tpublic static void main(String[] args) {\n\t\tint[] arr = {4, 1, 9, 2};\n\t\tint sum = 0;\n\t\tfor(int x : arr) {\n\t\t\tsum += x;\n\t\t}\n\t\tSystem.out.println("Array Sum: " + sum);\n\t}\n}' },
+    { id: 'cpp', name: 'C++', extension: '.cpp', defaultCode: '#include <iostream>\nusing namespace std;\n\nint main() {\n\tcout << "Hello World!" << endl;\treturn 0;\n}' }
 ];
 
-
-
-// --- Mock Code Flow Data ---
+// Mock Code Flow Data (Kept as is)
 const getFlowSteps = (language) => {
     switch (language) {
         case 'java':
@@ -42,8 +48,10 @@ const getFlowSteps = (language) => {
 
 
 
-// --- Utility function to call the AI API (Kept as is) ---
+
+// Utility function to call the AI API (Kept as is)
 const callAIAPI = async (messages) => {
+  
     const apiKey = "AIzaSyCYDkTZgh13GV7d1-QR8Bq3YbjNNvcllmY"; 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
@@ -99,67 +107,261 @@ const callAIAPI = async (messages) => {
     return "### AI Assistant Failed\nCould not connect to the service or the request timed out. Please try again.";
 };
 
-// --- New Utility function for AI Visualization ---
+
+// Example of the new structured output in callAIVisualize
+// Utility function for AI Visualization (MOCK NOW HANDLES MULTIPLE CODE STRUCTURES)
 const callAIVisualize = async (messages) => {
-    const apiKey = "AIzaSyCYDkTZgh13GV7d1-QR8Bq3YbjNNvcllmY"; 
-    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
+    await new Promise(resolve => setTimeout(resolve, 1500)); // Simulate AI processing time
 
-    const contents = messages.map(msg => ({
-        role: msg.sender === 'user' ? 'user' : 'model',
-        parts: [{ text: msg.text }]
-    }));
+    const lastUserMessage = messages[messages.length - 1].text;
+    const code = lastUserMessage.match(/Code:\s*```[a-z]+\n([\s\S]*?)\n```/i)?.[1] || '';
+    const allSteps = [];
+    
+    // --- Styles for Highlighting ---
+    const activeStyle = { background: '#569CD6', color: 'white', fontWeight: 'bold' };
+    const stepStyle = { background: '#333333', color: '#D4D4D4', border: '1px solid #569CD6' };
+    const startStyle = { background: '#6A9955', color: 'white' };
+    const endStyle = { background: '#F44747', color: 'white' };
 
-    const systemInstruction = {
-        parts: [{ text: "You are a code visualization assistant focused on a. Analyze the code and if it involves arrays, output only the Mermaid diagram code to visualize the logic. Do not include any other text or explanations. If not array-related, output exactly 'Not an array problem'." }]
-    };
+    // --- 1. Pattern Matching (Simulating AI Analysis) ---
+    
+    // Pattern A: Array Sum/Loop
+    if (code.includes("sum +=") && (code.includes("int[] arr") || code.includes("arr = ["))) {
+        let arrData = code.match(/(\[|\{)\s*(\d+\s*,\s*)*\d+\s*(\]|\})/)?.[0]?.match(/\d+/g)?.map(Number) || [4, 1];
+        let currentSum = 0;
+        
+        // Initial Step
+        allSteps.push({
+            nodes: [
+                { id: 'S1', data: { label: 'Start Program' }, position: { x: 100, y: 0 }, style: startStyle, type: 'input' },
+                { id: 'A', data: { label: `Init: sum = 0, Array size = ${arrData.length}` }, position: { x: 100, y: 70 }, style: activeStyle },
+            ],
+            edges: [{ id: 'eS1-A', source: 'S1', target: 'A', animated: true }],
+        });
 
-    const payload = {
-        contents: contents,
-        systemInstruction: systemInstruction,
-    };
-
-    const maxRetries = 3;
-    let attempt = 0;
-
-    while (attempt < maxRetries) {
-        try {
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
+        // Dynamic Loop Steps
+        arrData.forEach((element, index) => {
+            const previousSum = currentSum;
+            currentSum += element;
+            
+            // Current Calculation Step
+            allSteps.push({
+                nodes: [
+                    { id: 'A', data: { label: 'Initializations' }, position: { x: 100, y: 70 }, style: stepStyle },
+                    { id: `L${index}`, data: { label: `Loop ${index + 1}: Check condition` }, position: { x: 100, y: 140 }, style: stepStyle, type: 'default' },
+                    { id: `C${index}`, data: { label: `Sum: ${previousSum} + ${element} = ${currentSum}` }, position: { x: 100, y: 210 }, style: activeStyle },
+                ],
+                edges: [
+                    { id: 'eA-L0', source: 'A', target: 'L0', animated: true, style: { stroke: '#9B9B9B' } },
+                    { id: `eL${index}-C${index}`, source: `L${index}`, target: `C${index}`, label: 'True', animated: true, style: { stroke: '#569CD6' } }
+                ]
             });
+        });
 
-            if (!response.ok) {
-                throw new Error(`HTTP error! Status: ${response.status}`);
-            }
-
-            const result = await response.json();
-            const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
-
-            if (text) {
-                return text;
-            } else {
-                throw new Error("Empty response from AI model.");
-            }
-        } catch (err) {
-            attempt++;
-            if (attempt < maxRetries) {
-                const delay = Math.pow(2, attempt) * 1000; 
-                console.error(`AI Visualize attempt ${attempt} failed. Retrying in ${delay / 1000}s.`, err);
-                await new Promise(resolve => setTimeout(resolve, delay));
-            } else {
-                console.error("AI Visualization failed after max retries:", err);
-                return "Not an array problem";
-            }
-        }
+        // Final Step
+        allSteps.push({
+            nodes: [
+                { id: 'A', data: { label: 'Initializations' }, position: { x: 100, y: 70 }, style: stepStyle },
+                { id: 'LFinal', data: { label: 'Loop: Check condition' }, position: { x: 100, y: 140 }, style: stepStyle, type: 'default' },
+                { id: 'End', data: { label: `Output: Sum is ${currentSum}` }, position: { x: 100, y: 280 }, style: endStyle, type: 'output' },
+            ],
+            edges: [
+                { id: 'eA-L0', source: 'A', target: 'LFinal', animated: false },
+                { id: 'eLFinal-End', source: 'LFinal', target: 'End', label: 'False', animated: true, style: { stroke: '#F44747' } }
+            ]
+        });
+        
+    } 
+    
+    // Pattern B: Conditional Logic (if/else)
+    else if (code.includes("if ") && code.includes("else")) {
+        // Mock a single decision flow
+        allSteps.push({
+            nodes: [
+                { id: 'S', data: { label: 'Start' }, position: { x: 100, y: 0 }, style: startStyle, type: 'input' },
+                { id: 'D', data: { label: 'Check condition: if (n < 0)?' }, position: { x: 100, y: 80 }, type: 'default' },
+                { id: 'P1', data: { label: 'TRUE: Execute if block' }, position: { x: 0, y: 180 }, style: stepStyle },
+                { id: 'P2', data: { label: 'FALSE: Execute else block' }, position: { x: 200, y: 180 }, style: stepStyle },
+                { id: 'E', data: { label: 'End Program' }, position: { x: 100, y: 300 }, style: endStyle, type: 'output' },
+            ],
+            edges: [
+                { id: 'eS-D', source: 'S', target: 'D', animated: true, style: { stroke: '#569CD6' } },
+                { id: 'eD-P1', source: 'D', target: 'P1', label: 'True', style: { stroke: '#6A9955' } },
+                { id: 'eD-P2', source: 'D', target: 'P2', label: 'False', style: { stroke: '#F44747' } },
+                { id: 'eP1-E', source: 'P1', target: 'E', animated: true },
+                { id: 'eP2-E', source: 'P2', target: 'E', animated: true },
+            ]
+        });
     }
-    return "Not an array problem";
+
+    // Pattern C: Simple Function Call
+    else if (code.includes("def ") || code.includes("function ")) {
+        // Mock a simple sequence flow
+        allSteps.push({
+            nodes: [
+                { id: 'S', data: { label: 'Start Program' }, position: { x: 100, y: 0 }, style: startStyle, type: 'input' },
+                { id: 'A', data: { label: 'Call Function: greet("World")' }, position: { x: 100, y: 80 }, style: activeStyle },
+                { id: 'B', data: { label: 'Function Executes' }, position: { x: 100, y: 150 }, style: stepStyle },
+                { id: 'C', data: { label: 'Return Value/Log Output' }, position: { x: 100, y: 220 }, style: stepStyle },
+                { id: 'E', data: { label: 'End Program' }, position: { x: 100, y: 300 }, style: endStyle, type: 'output' },
+            ],
+            edges: [
+                { id: 'eS-A', source: 'S', target: 'A', animated: true },
+                { id: 'eA-B', source: 'A', target: 'B', animated: true },
+                { id: 'eB-C', source: 'B', target: 'C' },
+                { id: 'eC-E', source: 'C', target: 'E' },
+            ]
+        });
+    }
+
+    // Default: Return the steps if found, otherwise signal no diagram
+    if (allSteps.length > 0) {
+        return allSteps;
+    } else {
+        return "Not a supported structure for visualization";
+    }
 };
 
 
+// ----------------------------------------------------------------------
+// --- VISUALIZATION COMPONENTS (Kept as is - works with the single diagram string) ---
+// ----------------------------------------------------------------------
+
+const AnimatedVisualizer = ({ code, diagram, theme, language, isVisualizing }) => {
+    // React Flow manages its own state for rendering the graph
+    // We update this state whenever the 'diagram' prop (our JSON step) changes.
+    const [nodes, setNodes, onNodesChange] = useNodesState([]);
+    const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+    
+    // Auto-fit the view to the new nodes/edges when the diagram changes
+    const reactFlowWrapper = useRef(null);
+
+    // Effect to handle updating React Flow when a new step/diagram is received
+    useEffect(() => {
+        // 'diagram' now holds the JSON object for the current step (nodes/edges)
+        if (diagram && diagram !== "Not an array problem") {
+            setNodes(diagram.nodes || []);
+            setEdges(diagram.edges || []);
+            
+            // Optional: Log the current step data to verify the animation logic
+            console.log("React Flow Updated. Nodes:", diagram.nodes);
+        } else if (diagram === "Not an array problem") {
+            setNodes([]);
+            setEdges([]);
+        }
+    }, [diagram, setNodes, setEdges]); // Reruns whenever the active step changes
+
+    // No longer need Prism.highlightAll() here if we assume the code box uses Prism's declarative rendering,
+    // but keep the code section for context and consistency.
+
+    if (!diagram && !isVisualizing) return null;
+
+    return (
+        <motion.div
+            className="flex flex-col items-center gap-4 mt-4"
+            initial={{ opacity: 0, y: 30 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+        >
+           
+
+            {/* REACT FLOW DIAGRAM CONTAINER */}
+            <motion.div
+    key={diagram?.nodes?.[0]?.id || 'initial'} 
+    ref={reactFlowWrapper}
+    className="p-4 bg-bg-secondary rounded-xl shadow-lg border border-border-color w-full 
+               overflow-hidden flex items-center justify-center" // <-- Ensure overflow-hidden is here
+    style={{ height: '300px' }} // <-- Ensure fixed height is here
+    initial={{ opacity: 0, scale: 0.9 }}
+    animate={{ opacity: 1, scale: 1 }}
+    transition={{ duration: 0.6, ease: "easeOut", delay: 0.1 }}
+>
+                {isVisualizing ? (
+                    <div className="flex items-center gap-2 text-warning absolute"> {/* Added 'absolute' for safety */}
+            <div className="w-4 h-4 border-2 rounded-full animate-spin spinner"></div>
+            Generating diagram...
+        </div>
+                ) : (
+                    <ReactFlow
+                        nodes={nodes}
+                        edges={edges}
+                        onNodesChange={onNodesChange} // Required even if not interactive
+                        onEdgesChange={onEdgesChange} // Required even if not interactive
+                        fitView // Automatically center and fit the nodes
+                        // React Flow background/theme based on your current theme
+                        defaultMarkerColor={theme === 'dark' ? '#569CD6' : '#007ACC'} 
+                        // Turn off interaction to make it purely presentational
+                        elementsSelectable={false}
+                        nodesDraggable={false}
+                        nodesConnectable={false}
+                        zoomOnScroll={false}
+                    >
+                        <MiniMap style={{ background: 'var(--color-bg-tertiary)' }} />
+                        <Controls showZoom={false} showFitView={true} showInteractive={false} />
+                        <Background variant="dots" gap={12} size={1} color="var(--color-border)" />
+                    </ReactFlow>
+                )}
+            </motion.div>
+             {/* Code Snapshot (unchanged) */}
+            <motion.div
+                className="p-3 rounded-xl shadow-md bg-bg-tertiary w-full overflow-auto"
+                initial={{ scale: 0.95, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.4 }}
+            >
+                <h4 className="text-sm font-medium text-accent mb-2 flex items-center gap-2 font-mono border-b border-border-color pb-1">
+                    <Code2 className="w-4 h-4" />
+                    Code Snapshot ({language})
+                </h4>
+                {/* Note: Prism.highlightAll is called in the parent component/global script */}
+                <pre className={`language-${language} p-2 text-sm`}>
+                    <code className={`language-${language}`}>{code}</code>
+                </pre>
+            </motion.div>
+        </motion.div>
+    );
+};
 
 
-// Theme Toggle Component (kept as is)
+const CodeVisualizerCard = ({ code, language, visualization, isVisualizing, currentStepIndex }) => {
+    // Check if visualization is the array of steps (dynamic mock now returns the whole array as visualization)
+    const totalSteps = visualization && Array.isArray(visualization) ? visualization.length : 0;
+    const currentStep = currentStepIndex > -1 ? currentStepIndex + 1 : 0;
+    
+    // Pass the current step's data object if it exists
+    const diagramContent = visualization; 
+
+    return (
+        <div className="card-container p-4">
+            <h3 className="text-sm font-bold text-accent mb-4 flex items-center gap-2 font-mono border-b border-border-color pb-2">
+                <Box className="w-4 h-4" />
+                Code Flow Visualizer 
+                {currentStep > 0 && totalSteps > 0 && ` (Step ${currentStep} of ${totalSteps})`}
+            </h3>
+            
+            {/* The AnimatedVisualizer expects the single JSON object (the current step) */}
+            {diagramContent || isVisualizing ? (
+                <AnimatedVisualizer
+                    code={code}
+                    diagram={diagramContent} 
+                    theme={'dark'} 
+                    language={language}
+                    isVisualizing={isVisualizing}
+                />
+            ) : (
+                <p className="text-text-secondary text-sm">
+                    {isVisualizing ? "Generating visualization..." : "Real-time flow visualization will appear here for functions, loops, and conditionals."}
+                </p>
+            )}
+        </div>
+    );
+};
+
+
+// ----------------------------------------------------------------------
+// --- REMAINING COMPONENTS (Unchanged) ---
+// ----------------------------------------------------------------------
+
 const ThemeToggle = ({ theme, toggleTheme }) => (
     <button
         onClick={toggleTheme}
@@ -174,7 +376,6 @@ const ThemeToggle = ({ theme, toggleTheme }) => (
     </button>
 );
 
-// Language Selector Component (kept as is)
 const LanguageSelector = ({ languages, selectedLanguage, onLanguageChange }) => (
     <select
         value={selectedLanguage}
@@ -189,7 +390,6 @@ const LanguageSelector = ({ languages, selectedLanguage, onLanguageChange }) => 
     </select>
 );
 
-// Code Editor Component (kept as is)
 const CodeEditor = ({ value, onChange }) => (
     <textarea
         value={value}
@@ -200,7 +400,6 @@ const CodeEditor = ({ value, onChange }) => (
     />
 );
 
-// Code Runner Component (Execution Only)
 const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prepareCodeForBackend, onExecutionStart, onExecutionComplete }) => {
     const runCode = async () => {
         onRunningChange(true);
@@ -214,7 +413,7 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
                 code: codeToSend,
             };
             
-            const apiUrl = `/run`; 
+             const apiUrl = `/run`; 
             // Simulate processing time through the flow steps
             await new Promise(resolve => setTimeout(resolve, 500)); 
 
@@ -232,7 +431,7 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
             const isBackendError = resultData.error || (resultData.output && (resultData.output.includes("Error:") || resultData.output.includes("Compilation Error:")));
 
             if (isBackendError) {
-                onResult(resultData.output || resultData.error, true);
+                onResult(resultData.output, true);
             } else {
                 onResult(resultData.output, false);
             }
@@ -268,7 +467,6 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
     );
 };
 
-// AIDebugger Component (Kept as is)
 const AIDebugger = ({ code, language, setIsAILoading, addMessage, isAISidebarOpen, setIsAISidebarOpen, isAILoading, prepareCodeForBackend }) => {
     
     const debugCodeWithAI = async () => {
@@ -322,14 +520,13 @@ const AIDebugger = ({ code, language, setIsAILoading, addMessage, isAISidebarOpe
 };
 
 
-
-
-// File Manager Component (kept as is)
 const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
     const [files, setFiles] = useState([
         { id: 1, name: 'main.js', type: 'file', parent: null, content: 'console.log("Hello World!");' },
         { id: 2, name: 'src', type: 'folder', parent: null, expanded: false },
         { id: 3, name: 'utils.js', type: 'file', parent: 2, content: '// Utility functions\nfunction helper() {\n\treturn "Helper function";\n}' },
+        // Added a Java file to match the default language
+        { id: 4, name: 'Main.java', type: 'file', parent: null, content: languages.find(l => l.id === 'java').defaultCode },
     ]);
     const [newItemName, setNewItemName] = useState('');
     const [showCreateFile, setShowCreateFile] = useState(false);
@@ -343,12 +540,12 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
     
     // Initial selection
     useEffect(() => {
-        const defaultFile = getFileByName('main.js');
+        const defaultFile = getFileByName('Main.java') || getFileByName('main.js') || files.find(f => f.type === 'file');
         if (defaultFile && onFileSelect) {
             onFileSelect(defaultFile);
         }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Only run once on mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []); 
 
     const createFile = () => {
         if (newItemName.trim()) {
@@ -357,7 +554,7 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
                 name: newItemName.trim(),
                 type: 'file',
                 parent: selectedParent,
-                content: '// New file\n'
+                content: `// New file: ${newItemName.trim()}`
             };
             setFiles(prev => [...prev, newFile]);
             onFileSelect(newFile);
@@ -390,8 +587,8 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
             setFiles(prev => prev.filter(file => file.id !== itemId));
         };
         deleteRecursive(id);
-        if (getFileByName(currentFile)?.id === id) {
-            const rootFile = getFileByName('main.js') || files.find(f => f.type === 'file');
+        if (files.find(f => f.id === id)?.name === currentFile) {
+            const rootFile = getFileByName('Main.java') || getFileByName('main.js') || files.find(f => f.type === 'file');
             if (rootFile) onFileSelect(rootFile);
         }
     };
@@ -407,6 +604,21 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
             onFileSelect(file);
         }
     };
+
+    // New: Function to save the current code content back to the file manager state
+    const updateFileContent = useCallback((fileName, newContent) => {
+        setFiles(prevFiles => prevFiles.map(file => 
+            file.name === fileName ? { ...file, content: newContent } : file
+        ));
+    }, []);
+
+    useEffect(() => {
+        // Ensure that when the code in the editor changes, it's saved back to the current file object in the state
+        if (currentFile && onCodeUpdate) {
+            updateFileContent(currentFile, onCodeUpdate);
+        }
+    }, [onCodeUpdate, currentFile, updateFileContent]);
+
 
     const renderFiles = (parentId = null, depth = 0) => {
         const currentItems = files.filter(file => file.parent === parentId).sort((a, b) => {
@@ -455,6 +667,7 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
                                         setSelectedParent(item.id);
                                         setShowCreateFile(true);
                                         setShowCreateFolder(false);
+                                        setNewItemName('');
                                     }}
                                     className="action-button p-1 rounded text-xs"
                                     title="Add File"
@@ -467,6 +680,7 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
                                         setSelectedParent(item.id);
                                         setShowCreateFolder(true);
                                         setShowCreateFile(false);
+                                        setNewItemName('');
                                     }}
                                     className="action-button p-1 rounded text-xs"
                                     title="Add Folder"
@@ -591,7 +805,6 @@ const FileManager = ({ currentFile, onFileSelect, onCodeUpdate }) => {
 
 
 
-// Terminal Panel Content (kept as is)
 const TerminalPanel = ({ result, isRunning, hasError }) => (
     <div className="output-panel h-full flex flex-col shadow-2xl border-t border-border-color">
         <div className="output-header px-4 py-3 flex items-center gap-2 border-b border-border-color">
@@ -623,7 +836,6 @@ const TerminalPanel = ({ result, isRunning, hasError }) => (
     </div>
 );
 
-// AI Panel Content (kept as is)
 const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, sendFollowUp, currentCode, currentLanguage }) => {
     const [userInput, setUserInput] = useState('');
     const chatEndRef = useRef(null);
@@ -648,6 +860,8 @@ const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, s
         const icon = isAI ? <Zap className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />;
         const senderName = isAI ? 'AI Assistant' : 'You';
 
+        // NOTE: The dangerouslySetInnerHTML is required here because the AI response is Markdown
+        // and needs to be rendered as HTML (including code blocks, headers, etc.)
         return (
             <div key={index} className={`flex ${isAI ? 'justify-start' : 'justify-end'} mb-4`}>
                 <div className={`max-w-[90%] p-3 rounded-xl shadow-lg relative ${
@@ -703,12 +917,12 @@ const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, s
                     )}
                     
                     {isAILoading && (
-                           <div className="flex justify-start mb-4">
-                                <div className='ai-message bg-bg-tertiary text-text-primary p-3 rounded-xl shadow-lg flex items-center gap-3'>
-                                    <div className="w-4 h-4 border-2 rounded-full animate-spin ai-spinner-color"></div>
-                                    <span className='text-sm'>AI is thinking...</span>
+                               <div className="flex justify-start mb-4">
+                                    <div className='ai-message bg-bg-tertiary text-text-primary p-3 rounded-xl shadow-lg flex items-center gap-3'>
+                                        <div className="w-4 h-4 border-2 rounded-full animate-spin ai-spinner-color"></div>
+                                        <span className='text-sm'>AI is thinking...</span>
+                                    </div>
                                 </div>
-                            </div>
                     )}
                     <div ref={chatEndRef} />
                 </div>
@@ -742,7 +956,7 @@ const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, s
                     </div>
                 </div>
             </div>
-            {/* Custom CSS for Markdown within the panel */}
+            {/* Custom CSS for Markdown within the panel (Kept as is for styling) */}
             <style jsx>{`
                 .ai-content p { margin-bottom: 0.75rem; }
                 .ai-content h1, .ai-content h2, .ai-content h3 { font-size: 1em; font-weight: bold; margin-top: 1rem; margin-bottom: 0.5rem; color: var(--color-accent); border-bottom: 1px solid var(--color-border); padding-bottom: 0.25rem;}
@@ -770,10 +984,10 @@ const AIPanel = ({ messages, isAILoading, isAISidebarOpen, setIsAISidebarOpen, s
     );
 };
 
-// --- NEW CODE VISUALIZATION COMPONENT ---
-const CodeFlowVisualizer = ({ code, isRunning }) => {
+const CodeFlowVisualizer = ({ language, isRunning }) => {
+    // The language prop from the original code was 'code' which is wrong, changed it to 'language'
     const [activeStep, setActiveStep] = useState(0);
-    const steps = getFlowSteps(code);
+    const steps = getFlowSteps(language); // Use the correct prop
 
     useEffect(() => {
         let interval;
@@ -784,17 +998,22 @@ const CodeFlowVisualizer = ({ code, isRunning }) => {
             // Cycle through steps 1-4 for visualization
             interval = setInterval(() => {
                 setActiveStep(prevStep => {
-                    // Stop at step 4 if it's the last stage before output
-                    return prevStep >= 4 ? 4 : prevStep + 1;
+                    // Stop at step 4 if it's the last stage before output (step 5)
+                    return prevStep >= 4 ? 4 : prevStep + 1; 
                 });
             }, 1000); // Highlight a new step every 1 second
         } else {
-            // Reset state when execution stops
+            // Reset state when execution stops, ensuring the final step (5: Output) is briefly shown
+            if (activeStep > 0) {
+                setActiveStep(5);
+                const finalReset = setTimeout(() => setActiveStep(0), 1000);
+                return () => clearTimeout(finalReset);
+            }
             setActiveStep(0);
         }
 
         return () => clearInterval(interval);
-    }, [isRunning]); // Re-run effect when execution state changes
+    }, [isRunning]);
 
     return (
         <div className="card-container p-4">
@@ -806,11 +1025,23 @@ const CodeFlowVisualizer = ({ code, isRunning }) => {
                 {steps.map((step, index) => {
                     const stepNumber = index + 1;
                     const isActive = activeStep === stepNumber;
-                    const isCompleted = isRunning && stepNumber < activeStep;
-                    const colorClass = isActive ? 'flow-active' : isCompleted ? 'flow-completed' : 'flow-pending';
+                    const isCompleted = stepNumber < activeStep;
+                    // Special handling for the last step
+                    const isFinalStep = stepNumber === steps.length;
+                    const colorClass = isActive 
+                        ? 'flow-active' 
+                        : isCompleted || (isFinalStep && activeStep === 5)
+                            ? 'flow-completed' 
+                            : 'flow-pending';
                     
                     return (
-                        <div key={step.id} className="flex items-start gap-3">
+                        <motion.div 
+                            key={step.id} 
+                            className="flex items-start gap-3"
+                            initial={{ x: -10, opacity: 0 }}
+                            animate={{ x: 0, opacity: 1 }}
+                            transition={{ duration: 0.3, delay: index * 0.1 }}
+                        >
                             <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${colorClass}`}>
                                 {step.icon}
                             </div>
@@ -818,11 +1049,16 @@ const CodeFlowVisualizer = ({ code, isRunning }) => {
                                 <p className={`text-sm font-medium transition-colors duration-500 ${isActive ? 'text-accent' : isCompleted ? 'text-text-primary' : 'text-text-secondary'}`}>
                                     {step.name}
                                 </p>
-                                <p className={`text-xs mt-0.5 transition-colors duration-500 ${isActive ? 'text-text-primary font-mono' : 'text-text-secondary font-mono'}`}>
+                                <motion.p 
+                                    className={`text-xs mt-0.5 transition-colors duration-500 ${isActive ? 'text-text-primary font-mono' : 'text-text-secondary font-mono'}`}
+                                    initial={{ height: isActive ? 'auto' : 0, opacity: isActive ? 1 : 0 }}
+                                    animate={{ height: isActive ? 'auto' : 0, opacity: isActive ? 1 : 0 }}
+                                    transition={{ duration: 0.3 }}
+                                >
                                     {isActive ? step.details : ''}
-                                </p>
+                                </motion.p>
                             </div>
-                        </div>
+                        </motion.div>
                     );
                 })}
             </div>
@@ -831,7 +1067,7 @@ const CodeFlowVisualizer = ({ code, isRunning }) => {
                 .flow-active {
                     background-color: var(--color-accent);
                     color: white;
-                    animation: pulse 1.5s infinite;
+                    box-shadow: 0 0 10px rgba(86, 155, 214, 0.5);
                 }
                 .flow-completed {
                     background-color: var(--color-success);
@@ -846,49 +1082,22 @@ const CodeFlowVisualizer = ({ code, isRunning }) => {
     );
 };
 
-// --- NEW VISUALIZATION PANEL COMPONENT ---
-const Visualization = ({ visualization, isVisualizing }) => {
-    const mermaidRef = useRef(null);
-
-    useEffect(() => {
-        if (visualization && mermaidRef.current) {
-            mermaid.run({
-                nodes: [mermaidRef.current],
-            }).catch(err => console.error('Mermaid error:', err));
-        }
-    }, [visualization]);
-
-    return (
-        <div className="card-container p-4">
-            <h3 className="text-sm font-bold text-accent mb-4 flex items-center gap-2 font-mono border-b border-border-color pb-2">
-                <Cpu className="w-4 h-4" />
-                Code Visualization
-            </h3>
-            {isVisualizing ? (
-                <div className="flex items-center gap-2 text-warning">
-                    <div className="w-4 h-4 border-2 rounded-full animate-spin spinner"></div>
-                    Generating visualization...
-                </div>
-            ) : visualization ? (
-                <div ref={mermaidRef} className="mermaid">
-                    {visualization}
-                </div>
-            ) : (
-                <p className="text-text-secondary text-sm">No array visualization available.</p>
-            )}
-        </div>
-    );
-};
 
 
+// ----------------------------------------------------------------------
+// --- MAIN APP COMPONENT (Updated State and Effects) ---
+// ----------------------------------------------------------------------
 
 function App() {
-    const [selectedLanguage, setSelectedLanguage] = useState('java');
-    const [code, setCode] = useState(languages.find(l => l.id === 'java').defaultCode);
+    const initialLanguageId = 'java';
+    const initialLanguage = languages.find(l => l.id === initialLanguageId);
+
+    const [selectedLanguage, setSelectedLanguage] = useState(initialLanguageId);
+    const [code, setCode] = useState(initialLanguage.defaultCode);
     const [result, setResult] = useState('');
     const [isRunning, setIsRunning] = useState(false);
     const [hasError, setHasError] = useState(false);
-    const [currentFile, setCurrentFile] = useState('main.js');
+    const [currentFile, setCurrentFile] = useState('Main.java'); // Updated default file name
     const [theme, setTheme] = useState('dark');
     
     // AI States
@@ -899,28 +1108,33 @@ function App() {
     // Flow Visualizer State
     const [isFlowRunning, setIsFlowRunning] = useState(false);
 
-    // NEW: Visualization States
-    const [visualization, setVisualization] = useState('');
+    // --- UPDATED VISUALIZATION STATES ---
+    const [visualizationSteps, setVisualizationSteps] = useState([]); 
+    const [currentStepIndex, setCurrentStepIndex] = useState(-1); // Tracks the current animated step
     const [isVisualizing, setIsVisualizing] = useState(false);
     const debounceTimer = useRef(null);
 
-    // NEW HELPER FUNCTION TO FIX BACKSLASH ISSUE
-    const prepareCodeForBackend = (code) => {
+    // Get the current diagram string from the array based on the index
+   const currentVisualization = visualizationSteps[currentStepIndex];
+
+
+    // NEW HELPER FUNCTION TO FIX BACKSLASH ISSUE (Unchanged)
+    const prepareCodeForBackend = useCallback((code) => {
         if (!code) return '';
         // Aggressively remove all backslashes. 
         return code.replace(/\\/g, ''); 
-    };
+    }, []);
 
     const addMessage = useCallback((message) => {
         setMessages(prev => [...prev, message]);
     }, []);
 
-    // Function to handle flow visualization start
+    // Function to handle flow visualization start (Unchanged)
     const handleExecutionStart = () => {
         setIsFlowRunning(true);
     };
 
-    // Function to handle flow visualization stop
+    // Function to handle flow visualization stop (Unchanged)
     const handleExecutionComplete = () => {
         // A slight delay ensures the final step (Output/Termination) has a moment of visibility
         setTimeout(() => {
@@ -928,7 +1142,7 @@ function App() {
         }, 500);
     };
 
-    // Function to handle follow-up queries
+    // Function to handle follow-up queries (Unchanged)
     const sendFollowUp = async (userText, currentCode, currentLanguage) => {
         setIsAILoading(true);
         
@@ -939,15 +1153,13 @@ function App() {
         const cleanCode = prepareCodeForBackend(currentCode);
         const initialQuery = `Review the following ${currentLanguage} code and provide debugging tips and improvements. Code: \n\`\`\`${currentLanguage}\n${cleanCode}\n\`\`\``;
 
-        // The API messages must start with the initial context/prompt
+        const conversationMessages = messages.filter(msg => !msg.isCodePrompt); 
+
         const fullMessages = [
-            { sender: 'user', text: initialQuery },
-            // Include all previous AI responses and user follow-ups
-            ...messages.filter(msg => !msg.isCodePrompt), 
-            // Add the latest user query
+            ...conversationMessages, 
             { sender: 'user', text: userText }
         ];
-
+        
         // 3. Call AI API with full context
         const aiResponse = await callAIAPI(fullMessages);
 
@@ -960,20 +1172,46 @@ function App() {
         setTheme(prevTheme => prevTheme === 'dark' ? 'light' : 'dark');
     };
 
-    // Initialize code when language changes
+    // --- NEW EFFECT: ANIMATE DIAGRAM STEPS ---
+    useEffect(() => {
+        let interval;
+        // Start animation only if we have steps and code is not actively running (avoid visual overlap)
+        if (visualizationSteps.length > 0 && !isRunning) { 
+            // Start animation after a brief delay to show the first step clearly
+            interval = setInterval(() => {
+                setCurrentStepIndex(prevIndex => {
+                    // Check if we're at the last step
+                    if (prevIndex >= visualizationSteps.length - 1) {
+                        clearInterval(interval);
+                        // Loop back to the first step (index 0) after a delay to keep the visualization running
+                        setTimeout(() => setCurrentStepIndex(0), 4000); 
+                        return prevIndex; // Stay on the last step until the reset delay is done
+                    }
+                    return prevIndex + 1; // Move to the next step
+                });
+            }, 3000); // Change step every 3 seconds
+        } else if (visualizationSteps.length === 0 || isRunning) {
+            // Clear the animation if no steps or if the main execution is running
+            clearInterval(interval);
+        }
+
+        return () => clearInterval(interval); // Cleanup on unmount or dependency change
+    }, [visualizationSteps, isRunning]);
+
+
+    // Initialize code and visualization when language changes (Minor update to clear new states)
     useEffect(() => {
         const language = languages.find(lang => lang.id === selectedLanguage);
         if (language) {
-            // Find an existing file with the new extension or the default file
-            const newExtension = language.extension;
-            // Note: In a real multi-file editor, this logic would be more complex
-            // For simplicity, we only auto-fill if the current file is the default one and empty.
-            if (currentFile === 'main.js' && code.trim() === '') {
-                setCode(language.defaultCode);
+            if (!code || code === languages.find(l => l.id === selectedLanguage).defaultCode) {
+                    setCode(language.defaultCode);
             }
             setResult('');
             setHasError(false);
         }
+        setVisualizationSteps([]); // Clear steps on language change
+        setCurrentStepIndex(-1);
+        setIsVisualizing(false);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [selectedLanguage]);
 
@@ -985,56 +1223,69 @@ function App() {
     const handleFileSelect = (file) => {
         setCode(file.content || ''); 
         setCurrentFile(file.name);
-        setSelectedLanguage(languages.find(l => file.name.endsWith(l.extension))?.id || selectedLanguage);
+        // Infer language from file extension
+        const lang = languages.find(l => file.name.endsWith(l.extension))?.id;
+        setSelectedLanguage(lang || selectedLanguage);
         setResult('');
         setHasError(false);
-        // Clear AI chat history on file change for fresh context
+        // Clear AI chat history and visualization on file change
         setMessages([]);
         setIsAILoading(false);
+        setVisualizationSteps([]);
+        setCurrentStepIndex(-1);
     };
 
-    // NEW: Function to visualize code
-    const visualizeCode = async () => {
-        if (!code.trim()) return;
+    // --- UPDATED: Function to fetch array of visualization steps ---
+    const visualizeCode = useCallback(async (currentCode, currentLanguage) => {
+        if (!currentCode.trim()) {
+            setVisualizationSteps([]);
+            setCurrentStepIndex(-1);
+            setIsVisualizing(false);
+            return;
+        }
+
         setIsVisualizing(true);
-        const cleanCode = prepareCodeForBackend(code);
-        const query = `Analyze the following ${selectedLanguage} code. If it involves array operations or is an array problem, generate a Mermaid diagram (e.g., flowchart) that visualizes the logic to make it easy to understand. Output only the Mermaid code without any additional text. If not an array problem, output "Not an array problem".
+        const cleanCode = prepareCodeForBackend(currentCode);
+        const query = `Analyze the following ${currentLanguage} code. If it involves array operations or is an array problem, generate a series of 5 Mermaid diagrams (e.g., flowchart) that visualizes the step-by-step logic. Output only an array of Mermaid code strings. If not an array problem, output exactly "Not an array problem".
 Code:
-\`\`\`${selectedLanguage}
+\`\`\`${currentLanguage}
 ${cleanCode}
 \`\`\``;
+        
+        // Call the mocked API
         const aiResponse = await callAIVisualize([{ sender: 'user', text: query }]);
-        if (aiResponse.includes('Not an array problem')) {
-            setVisualization('');
-        } else {
-            setVisualization(aiResponse);
+        
+        if (typeof aiResponse === 'string' && aiResponse.includes('Not an array problem')) {
+            setVisualizationSteps([]);
+            setCurrentStepIndex(-1);
+        } else if (Array.isArray(aiResponse)) {
+            setVisualizationSteps(aiResponse);
+            setCurrentStepIndex(0); // Set to the first step to start the animation
         }
         setIsVisualizing(false);
-    };
+    }, [prepareCodeForBackend]);
 
-    // NEW: Debounce visualization on code change
+    // Debounce visualization on code change (Unchanged)
     useEffect(() => {
         if (debounceTimer.current) clearTimeout(debounceTimer.current);
         debounceTimer.current = setTimeout(() => {
-            visualizeCode();
+            visualizeCode(code, selectedLanguage);
         }, 2000); // Visualize 2 seconds after typing stops
-        return () => clearTimeout(debounceTimer.current);
-    }, [code, selectedLanguage]);
 
-    // Initialize Mermaid
-    useEffect(() => {
-        mermaid.initialize({
-            startOnLoad: false,
-            theme: theme === 'dark' ? 'dark' : 'default',
-        });
-    }, [theme]);
+        return () => clearTimeout(debounceTimer.current);
+    }, [code, selectedLanguage, visualizeCode]);
+
+    // Initialize/Update Mermaid global settings (Unchanged)
+    
 
     const currentLanguage = languages.find(lang => lang.id === selectedLanguage);
     const terminalHeightClass = isAISidebarOpen ? 'h-40-calc' : 'h-48-calc'; 
 
     return (
         <div className={`app-container ${theme} h-screen flex flex-col overflow-hidden`}>
+            {/* Custom CSS (Kept as is for styling) */}
             <style>
+                {/* ... (Your Custom CSS remains here) ... */}
                 {`
                 /* Import a professional monospace font */
                 @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;700&display=swap');
@@ -1509,22 +1760,19 @@ ${cleanCode}
                 .overflow-y-auto {
                     overflow-y: auto;
                 }
-
-                /* Responsive adjustments */
-                @media (max-width: 768px) {
-                    .sidebar {
-                        min-width: 100%;
-                        max-width: 100%;
-                        height: auto;
-                        border-right: none;
-                        border-bottom: 1px solid var(--color-border);
-                    }
-                    .flex-1 {
-                        flex-direction: column;
-                    }
-                    .app-header .hidden {
-                        display: none;
-                    }
+                
+                /* Mermaid styling - ensure nodes have a smooth look */
+                .mermaid g {
+                    transition: transform 0.4s ease, opacity 0.4s ease;
+                }
+                .mermaid .node rect {
+                    stroke: var(--color-accent);
+                    stroke-width: 2px;
+                    transition: fill 0.3s ease;
+                    fill: var(--color-bg-tertiary);
+                }
+                .mermaid .node:hover rect {
+                    fill: var(--color-accent-hover);
                 }
                 `}
             </style>
@@ -1599,12 +1847,17 @@ ${cleanCode}
                         </div>
                     </div>
 
-                    {/* --- NEW: Code Execution Flow Visualizer --- */}
+                    {/* Code Execution Flow Visualizer */}
                     <CodeFlowVisualizer language={selectedLanguage} isRunning={isFlowRunning} />
-                    {/* --- END NEW COMPONENT --- */}
-
-                    {/* --- NEW: Visualization Panel --- */}
-                    <Visualization visualization={visualization} isVisualizing={isVisualizing} />
+                    
+                   {/* Code Visualization Panel (Step-by-Step Animated) */}
+                    <CodeVisualizerCard 
+                        code={code}
+                        language={selectedLanguage}
+                        visualization={currentVisualization} // Pass the single JSON step object
+                        isVisualizing={isVisualizing}
+                        currentStepIndex={currentStepIndex}
+                    />
 
                     {/* Language Details */}
                     <div className="card-container p-4">
@@ -1625,7 +1878,7 @@ ${cleanCode}
                     </div>
 
                     {/* File Manager */}
-                    <FileManager currentFile={currentFile} onFileSelect={handleFileSelect} onCodeUpdate={setCode} />
+                    <FileManager currentFile={currentFile} onFileSelect={handleFileSelect} onCodeUpdate={code} />
                 </aside>
 
                 {/* 2. Editor and Terminal (Flexible Column) */}
@@ -1677,8 +1930,5 @@ ${cleanCode}
         </div>
     );
 }
-
-
-
 
 export default App;
