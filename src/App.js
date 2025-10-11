@@ -9,6 +9,7 @@ import 'reactflow/dist/style.css';
 import Prism from "prismjs";
 import "prismjs/themes/prism-tomorrow.css"; // Dark theme
 
+
 // ----------------------------------------------------------------------
 // --- MOCK DATA & UTILS (Updated for Step-by-Step Visualizer) ---
 // ----------------------------------------------------------------------
@@ -412,8 +413,8 @@ const CodeRunner = ({ code, language, onResult, onRunningChange, isRunning, prep
                 language: language,
                 code: codeToSend,
             };
-            
-             const apiUrl = `/run`; 
+
+            const apiUrl = process.env.REACT_APP_BACKEND_ENDPOINT || 'http://localhost:8080/run';
             // Simulate processing time through the flow steps
             await new Promise(resolve => setTimeout(resolve, 500)); 
 
@@ -1783,7 +1784,7 @@ ${cleanCode}
                     <div className="flex items-center gap-3">
                         <Code2 className="w-6 h-6 text-accent" />
                         <h1 className="text-2xl font-bold font-mono tracking-wider header-flicker text-accent">
-                            Your Own Compiler
+                            Compiler
                         </h1>
                     </div>
                     
