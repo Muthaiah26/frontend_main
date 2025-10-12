@@ -96,44 +96,88 @@ const callAIAPI = async (messages) => {
   }
 };
 
-const callAIVisualize = async (code) => {
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    const allSteps = [];
-    const activeStyle = { background: '#3b82f6', color: 'white' };
-    const stepStyle = { background: '#6b7280', color: 'white' };
-    const startStyle = { background: '#10b981', color: 'white' };
-    const endStyle = { background: '#ef4444', color: 'white' };
+const callAIVisualize = async (code, language) => {
+    // 1. Define the API Key and URL (as you have in callAIAPI)
+    const apiKey = "AIzaSyCYDkTZgh13GV7d1-QR8Bq3YbjNNvcllmY"; 
+    const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
-    if (code.includes("sum +=") && (code.includes("int[] arr") || code.includes("arr = ["))) {
-        let arrData = code.match(/(\[|\{)\s*(\d+\s*,\s*)*\d+\s*(\]|\})/)?.[0]?.match(/\d+/g)?.map(Number) || [4, 1, 9, 2];
-        let currentSum = 0;
-        allSteps.push({
-            nodes: [
-                { id: 'S1', data: { label: 'Start' }, position: { x: 100, y: 0 }, style: startStyle },
-                { id: 'A', data: { label: `Init: sum = 0` }, position: { x: 100, y: 70 }, style: activeStyle },
-            ]
+    // 2. Create a powerful, specific prompt for the AI
+    const prompt = `
+        You are a code execution visualizer. Your task is to analyze the provided code snippet and break it down into a series of execution steps. 
+        For each step, describe what is happening and show the state of the key variables.
+        The user's code is in the language: ${language}.
+        
+        Code to analyze:
+        \`\`\`${language}
+        ${code}
+        \`\`\`
+
+        Respond with ONLY a valid JSON array of objects. Do not include any other text, explanations, or markdown formatting like \`\`\`json.
+        Each object in the array represents one execution step and must have the following structure:
+        {
+          "explanation": "A concise, present-tense explanation of what happens in this step.",
+          "line_highlight": <line_number>,
+          "variables": [
+            { "name": "<var_name>", "value": "<var_value>" },
+            { "name": "<var_name>", "value": "<var_value>" }
+          ]
+        }
+        
+        Example for a loop:
+        - Step 1: Variable 'sum' is initialized.
+        - Step 2: Loop starts, 'i' is 0.
+        - Step 3: 'sum' is updated with the value of arr[0].
+        - Step 4: 'i' increments to 1.
+        - Step 5: 'sum' is updated with the value of arr[1].
+        - etc.
+        
+        Analyze the provided code and generate the JSON array. If the code is not suitable for visualization (e.g., has syntax errors, is too complex, or doesn't have a clear execution flow like a simple "Hello World"), return an empty array [].
+    `;
+
+    // 3. Construct the payload for the Gemini API
+    const payload = {
+        contents: [{
+            parts: [{ text: prompt }]
+        }],
+        // Add safety settings and generation config for better JSON output
+        safetySettings: [
+            { "category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE" },
+            { "category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE" },
+            { "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE" },
+            { "category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE" }
+        ],
+        generationConfig: {
+            "responseMimeType": "application/json",
+        }
+    };
+
+    // 4. Make the API call and handle the response
+    try {
+        const response = await fetch(apiUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
         });
-        arrData.forEach((element, index) => {
-            const previousSum = currentSum;
-            currentSum += element;
-            allSteps.push({
-                nodes: [
-                    { id: 'S1', data: { label: 'Start' }, position: { x: 100, y: 0 }, style: startStyle },
-                    { id: 'A', data: { label: 'Init Done' }, position: { x: 100, y: 70 }, style: stepStyle },
-                    { id: `C${index}`, data: { label: `sum = ${previousSum} + ${element}` }, position: { x: 100, y: 140 }, style: activeStyle },
-                ]
-            });
-        });
-        allSteps.push({
-            nodes: [
-                { id: 'S1', data: { label: 'Start' }, position: { x: 100, y: 0 }, style: stepStyle },
-                { id: 'End', data: { label: `Output: Sum is ${currentSum}` }, position: { x: 100, y: 70 }, style: endStyle },
-            ]
-        });
-    } else {
-        return "Not a supported structure";
+
+        if (!response.ok) {
+            console.error("API Error Response:", await response.text());
+            return "API_ERROR";
+        }
+
+        const result = await response.json();
+        const aiResponseText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+        
+        if (!aiResponseText) {
+             return []; // No valid steps returned
+        }
+
+        // The AI should return valid JSON directly, so we can parse it
+        return JSON.parse(aiResponseText);
+
+    } catch (err) {
+        console.error("Failed to visualize code:", err);
+        return "PARSE_ERROR"; // Return an error state
     }
-    return allSteps;
 };
 
 // --- UI COMPONENTS ---
@@ -369,199 +413,241 @@ const CodeFlowVisualizer = ({ language, isRunning }) => {
 
 const CodeVisualizerCard = ({ code, isVisualizing, currentStepData, totalSteps, currentStepIndex }) => {
     const progress = totalSteps > 0 ? ((currentStepIndex + 1) / totalSteps) * 100 : 0;
-  
+
+    const renderContent = () => {
+        if (isVisualizing) {
+            return (
+                <motion.div className="visualizer-spinner">
+                    <motion.div
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                        className="spinner-circle"
+                    />
+                    <p>AI is analyzing your code...</p>
+                </motion.div>
+            );
+        }
+
+        if (currentStepData) {
+            return (
+                <AnimatePresence mode="wait">
+                    <motion.div
+                        key={currentStepIndex} // Keying this makes Framer Motion re-animate on change
+                        className="diagram-container"
+                        initial={{ opacity: 0, y: 10 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -10 }}
+                        transition={{ duration: 0.3 }}
+                    >
+                        {/* Main Explanation */}
+                        <div className="explanation-box">
+                            <p>{currentStepData.explanation}</p>
+                        </div>
+                        
+                        {/* Variable State */}
+                        {currentStepData.variables && currentStepData.variables.length > 0 && (
+                             <div className="variables-box">
+                                <h4 className="variables-title">Variable State</h4>
+                                <motion.div layout className="variables-grid">
+                                    {currentStepData.variables.map((variable, idx) => (
+                                        <motion.div 
+                                            key={variable.name} 
+                                            className="variable-item"
+                                            initial={{ opacity: 0, scale: 0.5 }}
+                                            animate={{ opacity: 1, scale: 1 }}
+                                            transition={{ delay: 0.1 * idx }}
+                                        >
+                                            <span className="variable-name">{variable.name}</span>
+                                            <span className="variable-value">{String(variable.value)}</span>
+                                        </motion.div>
+                                    ))}
+                                </motion.div>
+                            </div>
+                        )}
+                    </motion.div>
+                </AnimatePresence>
+            );
+        }
+
+        // Empty/Default State
+        return (
+            <div className="visualizer-empty">
+                <Box className="w-8 h-8 mx-auto mb-2 text-gray-500" />
+                <p>Type supported code (like loops or assignments) to see the AI visualization.</p>
+            </div>
+        );
+    };
+
     return (
-      <motion.div
-        className="visualizer-card"
-        initial={{ opacity: 0, y: 10 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.25 }}
-      >
-        <div className="visualizer-header">
-          <h3 className="visualizer-title">
-            <Box className="w-4 h-4" />
-            AI Flow Visualizer
-          </h3>
-          {totalSteps > 0 && (
-            <div className="progress-container">
-              <div className="progress-bar">
-                <motion.div
-                  className="progress-fill"
-                  animate={{ width: `${progress}%` }}
-                  transition={{ duration: 0.3 }}
-                />
-              </div>
-              <span className="progress-text">
-                {currentStepIndex + 1}/{totalSteps}
-              </span>
-            </div>
-          )}
-        </div>
-  
-        {isVisualizing ? (
-          <motion.div className="visualizer-spinner">
-             <motion.div
-                animate={{ rotate: 360 }}
-                transition={{ duration: 1, repeat: Infinity }}
-                className="spinner-circle"
-            />
-            <p>Analyzing Code...</p>
-          </motion.div>
-        ) : currentStepData ? (
-          <motion.div
-            key={currentStepIndex}
-            className="diagram-container"
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.9 }}
-            transition={{ duration: 0.3 }}
-          >
-            <div className="diagram-content">
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ staggerChildren: 0.1, delayChildren: 0.1 }}
-              >
-                {currentStepData.nodes.map((node, idx) => (
-                  <motion.div
-                    key={node.id}
-                    className="diagram-node"
-                    style={{ background: node.style.background, color: node.style.color }}
-                    initial={{ opacity: 0, scale: 0 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    transition={{ delay: idx * 0.1, type: 'spring', stiffness: 400 }}
-                    whileHover={{ scale: 1.05 }}
-                  >
-                    {node.data.label}
-                  </motion.div>
-                ))}
-              </motion.div>
-            </div>
-          </motion.div>
-        ) : (
-          <div className="visualizer-empty">
-            <Box className="w-8 h-8 mx-auto mb-2 text-gray-500"/>
-            <p>AI visualization will appear for supported code patterns (e.g., array loops).</p>
-            </div>
-        )}
-  
-        <motion.pre
-          className="code-snapshot"
+        <motion.div
+            className="visualizer-card"
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.25 }}
         >
-          <code>{code.substring(0, 150)}{code.length > 150 && '...'}</code>
-        </motion.pre>
-      </motion.div>
+            <div className="visualizer-header">
+                <h3 className="visualizer-title">
+                    <Box className="w-4 h-4" />
+                    AI Flow Visualizer
+                </h3>
+                {totalSteps > 0 && !isVisualizing && (
+                    <div className="progress-container">
+                        <div className="progress-bar">
+                            <motion.div
+                                className="progress-fill"
+                                animate={{ width: `${progress}%` }}
+                                transition={{ duration: 0.3 }}
+                            />
+                        </div>
+                        <span className="progress-text">
+                            Step {currentStepIndex + 1}/{totalSteps}
+                        </span>
+                    </div>
+                )}
+            </div>
+            
+            <div className="visualizer-content-area">
+                {renderContent()}
+            </div>
+
+            {/* You can keep the code snapshot if you like */}
+            <motion.pre className="code-snapshot">
+                <code>{code.substring(0, 150)}{code.length > 150 && '...'}</code>
+            </motion.pre>
+        </motion.div>
     );
 };
   
 const AIPanel = ({ isOpen, onClose, messages, isAILoading, onSend }) => {
     const [userInput, setUserInput] = useState('');
     const chatEndRef = useRef(null);
-    const hasConversation = messages.length > 0;
-  
+
     useEffect(() => {
-      chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages]);
-  
+
     const handleSend = () => {
-      if (userInput.trim() && !isAILoading) {
-        onSend(userInput.trim());
-        setUserInput('');
-      }
+        if (userInput.trim() && !isAILoading) {
+            onSend(userInput.trim());
+            setUserInput('');
+        }
     };
-  
-    const renderMessage = (msg, index) => {
-      const isAI = msg.sender === 'ai';
-      return (
-        <motion.div
-          key={index}
-          className={`chat-message ${isAI ? 'ai' : 'user'}`}
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
-          <div className="message-header">
-            {isAI ? <Zap className="w-4 h-4" /> : <MessageSquare className="w-4 h-4" />}
-            <span>{isAI ? 'AI Assistant' : 'You'}</span>
-          </div>
-          <div className="message-content" dangerouslySetInnerHTML={{ __html: msg.text.replace(/\n/g, '<br/>') }}/>
-        </motion.div>
-      );
-    };
-  
-    return (
-      <AnimatePresence>
-        {isOpen && (
-          <motion.div
-            className="ai-panel"
-            initial={{ x: 400, opacity: 0 }}
-            animate={{ x: 0, opacity: 1 }}
-            exit={{ x: 400, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-          >
-            <div className="ai-header">
-              <div className="flex items-center gap-2">
-                <Zap className="w-4 h-4 text-blue-400" />
-                <span className="text-sm font-medium text-blue-400">AI Assistant</span>
-              </div>
-              <motion.button onClick={onClose} className="close-btn" whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
-                <X className="w-4 h-4" />
-              </motion.button>
-            </div>
-  
-            <div className="ai-content">
-              {!hasConversation && !isAILoading ? (
-                <motion.div
-                  className="ai-welcome"
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.2 }}
-                >
-                  <Zap className="w-8 h-8 mx-auto mb-3 text-blue-400" />
-                  <p className="ai-welcome-title">AI Code Assistant</p>
-                  <p className="ai-welcome-text">
-                    Click 'AI Debug' to start a conversation about your code.
-                  </p>
-                </motion.div>
-              ) : (
-                <div className="chat-history">
-                  {messages.map(renderMessage)}
-                  {isAILoading && (
-                    <motion.div className="chat-message ai" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                       <div className="message-header"><Zap className="w-4 h-4"/><span>AI Assistant</span></div>
-                       <div className="message-content flex items-center gap-2">
-                         <div className="w-2 h-2 bg-current rounded-full animate-pulse" style={{ animationDelay: '0s' }}></div>
-                         <div className="w-2 h-2 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.2s' }}></div>
-                         <div className="w-2 h-2 bg-current rounded-full animate-pulse" style={{ animationDelay: '0.4s' }}></div>
-                       </div>
-                    </motion.div>
-                  )}
-                  <div ref={chatEndRef}/>
+    
+    // **NEW**: Improved function to parse and render messages with code blocks
+    const renderMessageContent = (text) => {
+        const codeBlockRegex = /```(\w+)?\n([\s\S]*?)```/g;
+        const parts = [];
+        let lastIndex = 0;
+        let match;
+
+        while ((match = codeBlockRegex.exec(text)) !== null) {
+            // Add the text before the code block
+            if (match.index > lastIndex) {
+                parts.push(<p key={lastIndex}>{text.substring(lastIndex, match.index)}</p>);
+            }
+            // Add the code block
+            const language = match[1] || 'plaintext';
+            const code = match[2];
+            parts.push(
+                <div key={match.index} className="code-block">
+                    <div className="code-block-header">{language}</div>
+                    <pre><code>{code}</code></pre>
                 </div>
-              )}
-            </div>
-  
-            <div className="ai-input">
-              <input
-                type="text"
-                placeholder={hasConversation ? "Ask a follow-up..." : "Start with AI Debug"}
-                className="ai-input-field"
-                value={userInput}
-                onChange={(e) => setUserInput(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                disabled={!hasConversation || isAILoading}
-              />
-              <motion.button
-                onClick={handleSend}
-                className="ai-send-btn"
-                whileHover={{ scale: 1.05 }}
-                disabled={!userInput.trim() || isAILoading}
-              >
-                <Send className="w-5 h-5" />
-              </motion.button>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+            );
+            lastIndex = codeBlockRegex.lastIndex;
+        }
+
+        // Add any remaining text after the last code block
+        if (lastIndex < text.length) {
+            parts.push(<p key={lastIndex}>{text.substring(lastIndex)}</p>);
+        }
+
+        return parts;
+    };
+
+
+    return (
+        <AnimatePresence>
+            {isOpen && (
+                <motion.div
+                    className="ai-panel"
+                    initial={{ x: '100%' }}
+                    animate={{ x: 0 }}
+                    exit={{ x: '100%' }}
+                    transition={{ type: 'spring', stiffness: 300, damping: 30 }}
+                >
+                    <div className="ai-header">
+                       <div className="flex items-center gap-2">
+                            <Zap className="w-5 h-5 text-blue-400" />
+                            <span className="text-lg font-medium text-blue-400">AI Assistant</span>
+                        </div>
+                        <motion.button onClick={onClose} className="close-btn" whileHover={{ scale: 1.1, rotate: 90 }} whileTap={{ scale: 0.9 }}>
+                            <X className="w-5 h-5" />
+                        </motion.button>
+                    </div>
+
+                    <div className="ai-content">
+                        {messages.length === 0 && !isAILoading ? (
+                             <motion.div className="ai-welcome">
+                                <Zap className="w-12 h-12 mx-auto mb-4 text-blue-400 opacity-50" />
+                                <p className="ai-welcome-title">AI Code Assistant</p>
+                                <p className="ai-welcome-text">
+                                    Click 'AI Debug' to analyze your code, ask questions, or get suggestions.
+                                </p>
+                            </motion.div>
+                        ) : (
+                             <div className="chat-history">
+                                {messages.map((msg, index) => (
+                                    <motion.div
+                                        key={index}
+                                        className={`chat-message-wrapper ${msg.sender === 'ai' ? 'ai' : 'user'}`}
+                                        initial={{ opacity: 0, y: 20 }}
+                                        animate={{ opacity: 1, y: 0 }}
+                                        transition={{ delay: index * 0.1 }}
+                                    >
+                                        <div className="chat-bubble">
+                                           {/* Use the new rendering function */}
+                                           {renderMessageContent(msg.text)}
+                                        </div>
+                                    </motion.div>
+                                ))}
+                                {isAILoading && (
+                                     <motion.div className="chat-message-wrapper ai" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }}>
+                                         <div className="chat-bubble">
+                                            <div className="typing-indicator">
+                                                <span></span><span></span><span></span>
+                                            </div>
+                                         </div>
+                                     </motion.div>
+                                )}
+                                <div ref={chatEndRef} />
+                            </div>
+                        )}
+                    </div>
+
+                    <div className="ai-input">
+                        <input
+                            type="text"
+                            placeholder={isAILoading ? "AI is thinking..." : "Ask a follow-up..."}
+                            className="ai-input-field"
+                            value={userInput}
+                            onChange={(e) => setUserInput(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                            disabled={isAILoading}
+                        />
+                        <motion.button
+                            onClick={handleSend}
+                            className="ai-send-btn"
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.9 }}
+                            disabled={!userInput.trim() || isAILoading}
+                        >
+                            <Send className="w-5 h-5" />
+                        </motion.button>
+                    </div>
+                </motion.div>
+            )}
+        </AnimatePresence>
     );
 };
 
@@ -588,41 +674,52 @@ export default function App() {
   const prepareCodeForBackend = useCallback((code) => code.replace(/\\/g, ''), []);
   const addMessage = useCallback((message) => setMessages(prev => [...prev, message]), []);
 
-  const visualizeCode = useCallback(async (currentCode) => {
-    if (!currentCode.trim()) {
-        setVisualizationSteps([]);
-        setCurrentStepIndex(-1);
-        return;
-    }
-    setIsVisualizing(true);
-    const response = await callAIVisualize(prepareCodeForBackend(currentCode));
-    if (Array.isArray(response)) {
-        setVisualizationSteps(response);
-        setCurrentStepIndex(0);
-    } else {
-        setVisualizationSteps([]);
-        setCurrentStepIndex(-1);
-    }
-    setIsVisualizing(false);
-  }, [prepareCodeForBackend]);
 
-  useEffect(() => {
-    if (debounceTimer.current) clearTimeout(debounceTimer.current);
-    debounceTimer.current = setTimeout(() => {
-        visualizeCode(code);
-    }, 2000);
-    return () => clearTimeout(debounceTimer.current);
-  }, [code, visualizeCode]);
+const visualizeCode = useCallback(async (currentCode) => {
+  if (!currentCode.trim()) {
+    setVisualizationSteps([]);
+    setCurrentStepIndex(0); // Reset index
+    return;
+  }
+  setIsVisualizing(true);
+  // Pass the code AND the selected language
+  const response = await callAIVisualize(prepareCodeForBackend(currentCode), selectedLanguage);
+
+  if (Array.isArray(response)) {
+    setVisualizationSteps(response);
+    // Start from the first step
+    setCurrentStepIndex(0); 
+  } else {
+    // Handle error cases or unsupported code
+    console.error("Visualization failed:", response);
+    setVisualizationSteps([]);
+    setCurrentStepIndex(0);
+  }
+  setIsVisualizing(false);
+}, [prepareCodeForBackend, selectedLanguage]); 
+
+ useEffect(() => {
+  if (debounceTimer.current) clearTimeout(debounceTimer.current);
+  debounceTimer.current = setTimeout(() => {
+    visualizeCode(code); 
+  }, 1500); 
+  return () => clearTimeout(debounceTimer.current);
+}, [code, visualizeCode]);
 
   useEffect(() => {
     let interval;
-    if (visualizationSteps.length > 0 && !isRunning) {
+    // Only start the animation if we have steps and we are not currently running the code
+    if (visualizationSteps.length > 0 && !isVisualizing && !isRunning) {
         interval = setInterval(() => {
             setCurrentStepIndex(prev => (prev + 1) % visualizationSteps.length);
         }, 2500);
     }
+    // When steps change, reset to the beginning
+    else if (visualizationSteps.length > 0) {
+       setCurrentStepIndex(0);
+    }
     return () => clearInterval(interval);
-  }, [visualizationSteps, isRunning]);
+}, [visualizationSteps, isVisualizing, isRunning]);
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
