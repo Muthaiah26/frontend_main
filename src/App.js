@@ -98,7 +98,7 @@ const callAIAPI = async (messages) => {
 
 const callAIVisualize = async (code, language) => {
     // 1. Define the API Key and URL (as you have in callAIAPI)
-    const apiKey = "AIzaSyCYDkTZgh13GV7d1-QR8Bq3YbjNNvcllmY"; 
+    const apiKey = "AIzaSyDNCoWe6p765ttBo_e9n9yzpT5uSFrwHjs"; 
     const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-05-20:generateContent?key=${apiKey}`;
 
     // 2. Create a powerful, specific prompt for the AI
@@ -744,7 +744,7 @@ const visualizeCode = useCallback(async (currentCode) => {
             code: codeToSend,
         };
 
-        const apiUrl ='http://localhost:8080/run';
+        const apiUrl ='https://ccp-g131.onrender.com/run';
         
         const response = await fetch(apiUrl, {
             method: 'POST',
@@ -820,7 +820,7 @@ const visualizeCode = useCallback(async (currentCode) => {
       >
         <motion.div className="header-content" whileHover={{ scale: 1.02 }}>
           <Code2 className="w-6 h-6 text-blue-400" />
-          <h1 className="header-title">Your Own Compiler</h1>
+          <h1 className="header-title">IntelliRun </h1>
         </motion.div>
         <div className="header-right">
           <span className="header-subtitle">Universal Code Executor</span>
