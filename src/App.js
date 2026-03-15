@@ -744,7 +744,7 @@ const visualizeCode = useCallback(async (currentCode) => {
             code: codeToSend,
         };
 
-        const apiUrl ='https://ccp-o8or0cu2.b4a.run/run';
+        const apiUrl ='https://ccp-oa79d3ld.b4a.run/run';
         
         const response = await fetch(apiUrl, {
             method: 'POST',
