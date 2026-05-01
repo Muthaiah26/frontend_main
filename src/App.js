@@ -744,7 +744,7 @@ const visualizeCode = useCallback(async (currentCode) => {
             code: codeToSend,
         };
 
-        const apiUrl = Process.env.REACT_APP_BACKEND_ENDPOINT; // Ensure this is set in your .env file
+        const apiUrl = `${process.env.REACT_APP_BACKEND_ENDPOINT}`; // Ensure this is set in your .env file
         
         const response = await fetch(apiUrl, {
             method: 'POST',
