@@ -744,7 +744,7 @@ const visualizeCode = useCallback(async (currentCode) => {
             code: codeToSend,
         };
 
-        const apiUrl = 'http://16.171.240.251/run'; // Ensure this is set in your .env file
+        const apiUrl = 'https://used-scholar-hollow-telecom.trycloudflare.com/run'; // Ensure this is set in your .env file
         
         const response = await fetch(apiUrl, {
             method: 'POST',
