@@ -744,7 +744,7 @@ const visualizeCode = useCallback(async (currentCode) => {
             code: codeToSend,
         };
 
-        const apiUrl = 'https://used-scholar-hollow-telecom.trycloudflare.com/run'; // Ensure this is set in your .env file
+        const apiUrl = process.env.REACT_APP_BACKEND_ENDPOINT; // Ensure this is set in your .env file
         
         const response = await fetch(apiUrl, {
             method: 'POST',
